@@ -1,0 +1,13 @@
+torch
+numpy
+librosa
+tensorboard
+resampy
+speechbrain
+scipy
+matplotlib
+pyloudnorm
+scikit-learn
+pip==24.0
+fairseq
+vector-quantize-pytorch

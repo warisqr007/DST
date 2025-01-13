@@ -1,0 +1,6 @@
+{
+	"vec_type": "ecapa+xvector",
+	"vectors_file": "wgan_generated_vectors.pt",
+	"gan_model_name": "gan.pt",
+	"num_sampled": 500000,
+}

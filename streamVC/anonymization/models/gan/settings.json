@@ -1,0 +1,4 @@
+{
+	"vec_type": "ecapa+xvector",
+	"vectors_file": "wgan_generated_speaker_embeddings.pt"
+}
