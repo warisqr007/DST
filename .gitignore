@@ -167,3 +167,4 @@ streamVC/experiments/**/g_*
 streamVC/experiments/**/do_*
 **/logs/
 data/
+checkpoints/

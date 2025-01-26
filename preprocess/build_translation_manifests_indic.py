@@ -62,7 +62,6 @@ def call(cmd):
 
 
 def translation_preprocess(path, src_lang, trg_lang, dict, only_train=False):
-    special_tokens = "<unk>,<pad>,<eos>,<bos>,<mask>"
     bin = 'fairseq-preprocess'
     cmd = [
         bin,
@@ -112,10 +111,8 @@ def main():
     parser.add_argument("--dict", default="data/dict.txt", help="")
     args = parser.parse_args()
     
-    ACCENTS = ["spanish", "american"]
-    SRC_SPEAKERS = ["EBVS", "ERMS", "MBMPS", "NJS"]
-    TGT_SPEAKERS = ["BDL", "CLB", "RMS", "SLT"]
-    SRC_ACCENT = "spanish"
+    ACCENTS = ["indian", "american"]
+    SRC_ACCENT = "indian"
     TRG_ACCENT = "american"
 
     suffix = ""
@@ -123,7 +120,7 @@ def main():
     translation_suffix = ""
     if args.autoencode: translation_suffix += "_autoencode"
 
-    translation_dir = Path(args.output_path) / ("translation" + suffix + translation_suffix)
+    translation_dir = Path(args.output_path) / ("translation" + f"_src_{SRC_ACCENT}" + suffix + translation_suffix)
     os.makedirs(translation_dir, exist_ok=True)
     
 
@@ -131,65 +128,38 @@ def main():
     src_root, src_tsv_lines, src_km_lines = load_tokens(path = args.src_data)
     tgt_root, tgt_tsv_lines, tgt_km_lines = load_tokens(path = args.tgt_data)
 
-    # Get unique utterance ids
-    src_utt_ids = [get_utt_id(l) for l in src_tsv_lines]
-    tgt_utt_ids = [get_utt_id(l) for l in tgt_tsv_lines]
-    src_utt_ids = list(set(src_utt_ids))
-    tgt_utt_ids = list(set(tgt_utt_ids))
-    intersection_utt_ids = set(src_utt_ids).intersection(set(tgt_utt_ids))
-    print(f"intersection of utterance ids: {len(intersection_utt_ids)}")
+    assert len(src_tsv_lines) == len(tgt_tsv_lines)
+    # length = min(len(src_tsv_lines), len(tgt_tsv_lines))
+    # src_tsv_lines = src_tsv_lines[:length]
+    # tgt_tsv_lines = tgt_tsv_lines[:length]
+    # src_km_lines = src_km_lines[:length]
+    # tgt_km_lines = tgt_km_lines[:length]
 
+    index_list = list(range(len(src_tsv_lines)))
     # Split the data
-    utt_ids_train, utt_ids_test, _, _ = train_test_split(list(intersection_utt_ids), list(intersection_utt_ids), test_size=0.05, random_state=42)
-    utt_ids_train, utt_ids_valid, _, _ = train_test_split(utt_ids_train, utt_ids_train, test_size=0.05, random_state=42)
-
-    # Filter the data
-    src_tsv_lines_train, src_tsv_lines_valid, src_tsv_lines_test = [], [], []
+    index_list_train, index_list_test = train_test_split(index_list, test_size=0.01, random_state=42)
+    index_list_train, index_list_valid = train_test_split(index_list_train, test_size=0.01, random_state=42)
 
 
-    for split, utt_ids in zip(["train", "valid", "test"], [utt_ids_train, utt_ids_valid, utt_ids_test]):
+    for split, indices in zip(["train", "valid", "test"], [index_list_train, index_list_valid, index_list_test]):
         print("---")
         print(split)
 
-        src_tsv, tgt_tsv, src_km, tgt_km = [], [], [], []
+        src_tsv = [src_tsv_lines[i] for i in indices]
+        tgt_tsv = [tgt_tsv_lines[i] for i in indices]
+        src_km = [src_km_lines[i] for i in indices]
+        tgt_km = [tgt_km_lines[i] for i in indices]
 
-        spkr2utts = defaultdict(lambda: defaultdict(int))
-        for i, tsv_line in enumerate(tgt_tsv_lines):
-            utt_id = get_utt_id(tsv_line)
-            if utt_id in utt_ids:
-                speaker = tsv_line.split("/")[0]
-                assert speaker in TGT_SPEAKERS, "unknown speaker!"
-                spkr2utts[speaker][utt_id] = i
-
-        # print(spkr2utts)
-
+        # autoencode target
         if args.autoencode:
-            for speaker, src_utt_ids in spkr2utts.items():
-                for utt_id, idx in src_utt_ids.items():
-                    for speaker_tgt, utt_ids_tgt in spkr2utts.items():
-                        if speaker != speaker_tgt:
-                            if utt_id in utt_ids_tgt:
-                                src_tsv.append(tgt_tsv_lines[idx])
-                                tgt_tsv.append(tgt_tsv_lines[utt_ids_tgt[utt_id]])
-                                src_km.append(tgt_km_lines[idx])
-                                tgt_km.append(tgt_km_lines[utt_ids_tgt[utt_id]])
+            src_tsv += tgt_tsv
+            tgt_tsv += tgt_tsv
+            src_km += tgt_km
+            tgt_km += tgt_km
 
-        src_sprk2utts = defaultdict(lambda: defaultdict(int))
-        for i, tsv_line in enumerate(src_tsv_lines):
-            utt_id = get_utt_id(tsv_line)
-            if utt_id in utt_ids:
-                speaker = tsv_line.split("/")[0]
-                assert speaker in SRC_SPEAKERS, "unknown speaker!"
-                src_sprk2utts[speaker][utt_id] = i
-        
-        for speaker, src_utt_ids in src_sprk2utts.items():
-            for utt_id, idx in src_utt_ids.items():
-                for speaker_tgt, utt_ids_tgt in spkr2utts.items():
-                    if utt_id in utt_ids_tgt:
-                        src_tsv.append(src_tsv_lines[idx])
-                        tgt_tsv.append(tgt_tsv_lines[utt_ids_tgt[utt_id]])
-                        src_km.append(src_km_lines[idx])
-                        tgt_km.append(tgt_km_lines[utt_ids_tgt[utt_id]])
+        if args.dedup:
+            src_km = [dedup(l) for l in src_km]
+            tgt_km = [dedup(l) for l in tgt_km]
 
         
         assert len(src_tsv) == len(tgt_tsv) == len(src_km) == len(tgt_km)
